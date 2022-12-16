@@ -1,0 +1,104 @@
+import tensorflow as tf
+import numpy as np
+
+# define the input and output data
+input_data = np.array([['hi'], ['how are you'], ['what is your name'], ['what do you do']])
+output_data = np.array([['hello'], ['I am good, thank you'], ['My name is Bot'], ['I am a chatbot, I talk to people and answer their questions']])
+
+# create a dataset from the input and output data
+dataset = tf.data.Dataset.from_tensor_slices((input_data, output_data))
+
+# create a vocabulary from the input data
+vocab_processor = tf.contrib.learn.preprocessing.VocabularyProcessor(max_document_length=1)
+
+# fit the vocabulary processor to the input data
+vocab_processor.fit(input_data)
+
+# create a function to transform the input data using the vocabulary processor
+def transform_input_data(input_data):
+  return vocab_processor.transform(input_data)
+
+# create a function to transform the output data using the vocabulary processor
+def transform_output_data(output_data):
+  return vocab_processor.transform(output_data)
+
+# create a function to convert the transformed data back to human-readable form
+def inverse_transform_data(transformed_data):
+  return vocab_processor.inverse_transform(transformed_data)
+
+# create a model using the TensorFlow Estimator API
+def model_fn(features, labels, mode, params):
+  # create a linear model
+  logits = tf.layers.dense(features['x'], units=1)
+
+  # create a prediction based on the logits
+  prediction = tf.nn.softmax(logits)
+
+  # if the model is in prediction mode, return the prediction
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    return tf.estimator.EstimatorSpec(mode, predictions=prediction)
+
+  # calculate the loss using cross-entropy
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+  # if the model is in evaluation mode, return the evaluation metrics
+  if mode == tf.estimator.ModeKeys.EVAL:
+    eval_metric_ops = {
+        'accuracy': tf.metrics.accuracy(labels=labels, predictions=prediction)
+    }
+    return tf.estimator.EstimatorSpec(mode, loss=loss, eval_metric_ops=eval_metric_ops)
+
+  # if the model is in training mode, use the Adam optimizer to minimize the loss
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    optimizer = tf.train.AdamOptimizer(learning_rate=params['learning_rate'])
+    train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
+
+# create a function to input function to the model
+def input_fn(dataset):
+  def _input_fn():
+    features = {'x': dataset}
+    return features, None
+  return _input_fn
+
+# create a function to generate predictions
+def generate_predictions(input_str):
+  # transform the input data
+  input_data = transform_input_data(np.array([input_str]))
+
+  # create a dataset from the input data
+  dataset = tf.data.Dataset.from_tensor_slices(input_data)
+
+  # create an iterator for the dataset
+  iterator = dataset.make_one_shot_iterator()
+
+  # get the next element from the iterator
+  next_element = iterator.get_next()
+
+  # get the prediction for the input data
+  prediction = list(estimator.predict(input_fn=input_fn(next_element)))[0]
+
+  # get the index of the predicted output
+  predicted_output_index = np.argmax(prediction)
+
+  # get the predicted output
+  predicted_output = inverse_transform_data(np.array([predicted_output_index]))[0]
+
+  return predicted_output
+
+# create an estimator for the model
+estimator = tf.estimator.Estimator(model_fn=model_fn, params={'learning_rate': 0.01})
+
+# train the model on the dataset
+estimator.train(input_fn=input_fn(dataset.map(lambda x, y: (transform_input_data(x), transform_output_data(y)))), steps=1000)
+
+# test the model by generating predictions for the input data
+for input_str in input_data:
+  predicted_output = generate_predictions(input_str)
+  print(f'Input: {input_str}, Output: {predicted_output}')
+
+
+#이 코드는 TensorFlow Estimator API를 사용하여 챗봇에 대한 선형 모델을 생성하고 input_data 및 output_data 배열에 제공된 입력-출력 쌍에서 학습합니다.
+# generate_predictions 함수는 estimator.predict 메서드를 호출하여 주어진 입력 문자열에 대한 예측을 생성하는 데 사용할 수 있습니다.
+
+
